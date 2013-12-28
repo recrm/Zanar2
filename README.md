@@ -15,7 +15,7 @@ pygame<br />
 
 Arrow keys - Control all cursers.<br />
 Enter - Makes selection.<br />
-Exit - Cancel selection.<br />
+Esc - Cancel selection.<br />
 q - Enter into and exit out of equipment menu.
 
 Everything else is accessible through trial and error.
