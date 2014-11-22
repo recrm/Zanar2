@@ -1,21 +1,27 @@
-import pygame 
-import sys 
+#!/usr/bin/env python3
+import sys
+import re
 import random
-import files.udebs as udebs
+import pygame 
 from pygame.locals import *
+from udebs import loadxml
+from udebs import interpret
 
-#initialize pygame and udebs
+"""
+To do.
+
+Fix early win.
+Fix messages.
+"""
+
+#initialize pygame
 pygame.mixer.pre_init(44100, -16, 2, 2048)
 pygame.init()
-main_map = udebs.battleStart("files/zanar2.xml")
-main_map.controlMove('empty', 'empty', 'init')
-main_map.controlTime(0)
 mainClock = pygame.time.Clock()
 
 #display
 mainSurface = pygame.display.set_mode((400, 500), 0, 32)
 pygame.display.set_caption('Tactical RPG demo')
-pygame.mouse.set_visible(False)
 
 #fonts
 basicFont = pygame.font.SysFont(None, 48)
@@ -31,14 +37,9 @@ sound_boss.set_volume(1)
 sound_overworld.play(-1)
 
 #sfx
-sound_fx = {
-    'step': pygame.mixer.Sound('sound/step.wav'),
-    'pickup': pygame.mixer.Sound('sound/pickup.wav'),
-    'menu': pygame.mixer.Sound('sound/menu.wav'),
-    'select': pygame.mixer.Sound('sound/select.wav'),
-    'back': pygame.mixer.Sound('sound/back.wav'),
-}
-
+sound_fx = {}
+for effect in ["attack.wav", "fire.wav", "magic.wav", "pickup.wav", "uberheal.wav", "back.wav", "charge.wav", "heal.wav", "menu.wav", "select.wav", "water.wav", "boom.wav", "hurt.wav", "step.wav"]:
+    sound_fx[effect.split(".")[0]] = pygame.mixer.Sound("static/" + effect)
 
 #colour
 WHITE = (255, 255, 255)
@@ -49,622 +50,335 @@ GREY = (125,125,125)
 BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
 
-def arrow_update(event, selection, sound=False):
-    if event.key == K_RIGHT:
-        selection['x'] +=1
-        if selection['x'] > selection['xmax']:
-            selection['x'] = selection['xmax']
-        else:
-            if sound:
-                sound.play()    
-    elif event.key == K_LEFT:
-        selection['x'] -=1
-        if selection['x'] < 0:
-            selection['x'] = 0
-        else:
-            if sound:
-                sound.play()    
-    elif event.key == K_UP:
-        selection['y'] -=1
-        if selection['y'] < 0:
-            selection['y'] = 0
-        else:
-            if sound:
-                sound.play()   
-    elif event.key == K_DOWN:
-        selection['y'] +=1
-        if selection['y'] > selection['ymax']:
-            selection['y'] = selection['ymax']
-        else:
-            if sound:
-                sound.play()    
-    return selection
+#Areas of screen
+headerRect = pygame.Rect(0, 0, 400, 50)
+topRect = pygame.Rect(0, 50, 400, 50)
+middleRect = pygame.Rect(0, 100, 400, 300)
+bottomRect = pygame.Rect(0, 400, 400, 100)
 
+#Drawing functions
 def drawText(text, font, x, y ,color, background):
     words = font.render(text, True, color, background)
     rect = words.get_rect(center=(x,y))
     mainSurface.blit(words, rect)
     return
 
-def main():
-    
-    def message(text, font=basicFont):
-        pygame.draw.rect(mainSurface, BLACK, pygame.Rect(( 0, 400 ), ( 400, 100 )))
-        drawText(text, font, 200,450, GREEN, BLACK)
-        pygame.display.update()
-        while True:
-            event = pygame.event.wait()
-            if event.type == KEYDOWN and event.key == K_RETURN:
-                break
-        return
-    
-    def high_update(move, env):
-        highlighted = []
-        for x in range(8):
-            for y in range(8):
-                target = (x,y)
-                targetenv = env.createTarget('hero', target, move)
-                if env.testRequire(targetenv) == True:
-                    highlighted.append([x,y])
-        return highlighted
-    
-    #definitions
-    tile = pygame.Rect(( 0, 0 ), ( 49, 49 ))
-    selection = {'x': 0, 'y': 0, "xmax": 7, "ymax": 7}
-    inport = udebs.battleStart("files/rpg.xml")
-    inport.variables["pygame"] = pygame
-    active_selection = False
-    battle = []
-    win = False
-    boss = False
-    
-    #initial highlight
-    highlighted = []
-    highlighted = high_update('travel', main_map)
-    
-    
-    #game loop
-    while True:
+def ListBox(array, coord, rec, collide=False, mouse=False, high=False, font=smallFont, font_color=BLACK, background=WHITE):
+    if collide and not rec.collidepoint(mouse):
+        return False
+    xvalue = rec.width / (2*coord[0])
+    yvalue = rec.height / (2*coord[1])
+    tile = pygame.Rect(0, 0, 2*xvalue, 2*yvalue)
+    x = 1
+    y = 1
+    for item in array:
+        if x > coord[0]:
+            y +=1
+            x = 1
+        xpos = rec.left + (2*x-1)*xvalue
+        ypos = rec.top + (2*y-1)*yvalue
+        if collide:
+            tile.center = (xpos, ypos)
+            if tile.collidepoint(mouse):
+                return item
+        elif item:
+            temp_background = GREEN if item == high else background
+            drawText(item, font, xpos, ypos, font_color, temp_background)
+        x +=1
         
-        for entry in inport.getLog():
-            if "inventory" in entry:
-                message(entry, smallFont)
-        
-        for mob in battle[:]:
-            sound_overworld.fadeout(1000)
-            message("BATTLE ENGAGED!!!")
-            sound_fight.play(-1)
-            inport.controlMove("empty", "empty", 'init')
-            inport = subBattle(inport)
-            sound_fight.fadeout(1000)
-            main_map.controlMove("hero", mob, "KO")
-            inport.controlMove('treasure', 'party', 'get_item')
-            for entry in inport.getLog():
-                if "inventory" in entry:
-                    message(entry, smallFont)
-            highlighted = high_update('travel', main_map)
-            battle.remove(mob)
-            sound_overworld.play(-1)
-            
-        if win:
-            message("Level Complete!!!")
-            main_map.controlMove("empty", "empty", 'finish')
-            inport.controlMove("empty", "empty", 'finish')
-            main_map.controlMove('empty', 'empty', 'init')
-            main_map.controlTime(1)
-            highlighted = high_update('travel', main_map)
-            win = False
-            selection['x'] = 0
-            selection['y'] = 0
-            battle = []
-        
-        if boss:
-            sound_overworld.fadeout(1000)
-            message("Engaging Boss Monster")
-            sound_boss.play(-1)
-            inport.controlMove("empty", "empty", 'recruit_boss')
-            inport = subBattle(inport)
-            
-            #you win game is over.
-            sound_boss.fadeout(1000)
-            message("You Win! Game Over!")
-            pygame.quit()
-            sys.exit()
-        
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                pygame.quit()
-                sys.exit()
-            
-            if event.type == KEYDOWN:
-                arrow_update(event, selection)
-                
-                #selection target
-                if event.key == K_RETURN:
-                    sound_fx['step'].play()
-                    trgt = (selection['x'], selection['y'])
-                    main_map.controlMove('hero', trgt, 'travel')
-                    #move enemies
-                    for unit in main_map.getGroup("mob"):
-                        if unit == "hero":
-                            continue
-                        loc = main_map.getLocation(unit)
-                        if loc:
-                            loc = (loc[0]+random.randint(-1, 1), loc[1]+random.randint(-1, 1))
-                            main_map.controlMove(unit, loc, 'travel')
-                        if main_map.getDistance('hero', unit, 'pinf') <= 1:
-                            battle.append(unit)
-                    #check proximity
-                    if main_map.getDistance('hero', 'treasure', 'pinf') <= 1:
-                        inport.controlMove('treasure', 'party', 'get_item')
-                        main_map.controlMove('hero', "treasure", "KO")
-                    if main_map.getDistance('hero', 'goal', 'pinf') <= 1:
-                        win = True
-                    if main_map.getDistance('hero', 'boss', 'pinf') <= 1:
-                        boss = True
-                    main_map.controlTime(0)
-                    main_map.controlTime(1)
-                    highlighted = high_update('travel', main_map)
-                 
-                if event.key == K_q:
-                    sound_fx['select'].play()
-                    inport = menuScreen(inport)
-                    
-        #redraw the Unit board
-        mainSurface.fill((0, 0, 0))
-        for x in range(8):
-            for y in range(8):
-                tile.topleft = (50*x, 50*y)
-                colour = WHITE
-                if [x,y] in highlighted:
-                    colour = GREEN
-                if x == selection['x'] and y == selection['y']:
-                    colour = RED
-                pygame.draw.rect(mainSurface, colour, tile)
-                unit = main_map.getMap((x, y))
-                if unit != 'empty':
-                    sprite_colour = BLACK
-                    sprite_symbol = main_map.getStat(unit, 'sprite')
-                    mainSurface.blit(basicFont.render(sprite_symbol, True, sprite_colour, colour), (x*50+10, y*50+10))
-        
-        drawText("Level " + str(inport.getStat("recruiter", "LVL")), basicFont, 200,450, GREEN, BLACK)
-        pygame.display.update()
-        mainClock.tick(60)
+    return "empty"
 
-def menuScreen(inport):
-    #definitions
-    mode = "equip"
-    selectBoxMenu = pygame.Rect( 125, 0, 100, 25 )
-    selection = {'x': 0, 'y': 0, "xmax": 1, "ymax": 2}
-    selectItem = {'x': 0, 'y': 0, "xmax": 3, "ymax": 1}
-    
-    #game loop
-    while True:
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                pygame.quit()
-                sys.exit()
-            
-            #key inputs for menu
-            if event.type == KEYDOWN:
-                if mode == "equip":
-                    arrow_update(event, selection, sound_fx['menu'])
-                elif mode == "inventory":
-                    arrow_update(event, selectItem, sound_fx['menu'])
-                        
-                if event.key == K_q:
-                    sound_fx['back'].play()
-                    inport.getLog()
-                    return inport
-                       
-                if event.key == K_ESCAPE:
-                    if mode == "inventory":
-                        sound_fx['back'].play()
-                        mode = "equip"
-                        
-                if event.key == K_RETURN:
-                    sound_fx['select'].play()
-                    if mode == "equip":
-                        mode = "inventory"
-                    elif mode == "inventory":
-                        #collect data
-                        oldItem_unit = ["fighter", "wmage", "bmage"][selection['y']]
-                        oldItem_type = ["weapon", "hat"][selection['x']]
-                        oldItem = inport.getListGroup(oldItem_unit, "equip", oldItem_type)
-
-                        try:
-                            transferItem = inport.getStat("party", "inventory")[selectItem['x'] + 4*selectItem['y']]
-                        except IndexError:
-                            transferItem = False
-                        transferChar = ["fighter", "wmage", "bmage"][selection['y']]
-                        
-                        #one use items.
-                        if transferItem in ['potion', 'mana']:
-                            inport.controlMove(transferChar, transferChar, transferItem)
-                            inport.controlTime(0)
-                        
-                        #change equipment
-                        else:
-                            #unequip old item
-                            if oldItem:
-                                inport.controlList(inport.getListGroup(transferChar, "group", "TEMPLATE"), "equip", oldItem, "remove")
-                                inport.controlList("party", "inventory", oldItem, 'add')
-                            
-                            #requip new item
-                            if transferItem:
-                                if transferChar == "fighter":
-                                    weapon = "sword"
-                                else:
-                                    weapon = "staff"
-                                if inport.controlList(inport.getListGroup(transferChar, "group", "TEMPLATE"), 'equip', transferItem, 'add'):
-                                    inport.controlList("party", "inventory", transferItem, "remove")
-                        
-                        #cleanup
-                        mode = "equip"
-                        del oldItem, transferItem, transferChar
-        
-        #clear and reprint static
-        mainSurface.fill((255, 255, 255))
-        char = ["fighter", "wmage", "bmage"][selection['y']]
-        chargroup = inport.getListGroup(char, "group", "TEMPLATE")
-        strhp = str(inport.getStat(char, "HP")) + "/" + str(inport.getStat(chargroup, "HP"))
-        strmp = str(inport.getStat(char, "MP")) + "/" + str(inport.getStat(chargroup, "MP"))
-        
-        pygame.draw.line(mainSurface, BLACK, (0,100), (400,100))
-        pygame.draw.line(mainSurface, BLACK, (0,400), (400,400))
-        pygame.draw.line(mainSurface, BLACK, (20,175), (380,175))
-        pygame.draw.line(mainSurface, BLACK, (20,250), (380,250))
-        pygame.draw.line(mainSurface, BLACK, (20,325), (380,325))
-        pygame.draw.line(mainSurface, BLACK, (133,120), (133,380))
-        pygame.draw.line(mainSurface, BLACK, (266,120), (266,380))
-        drawText(inport.getStat(char, "DESC"), basicFont, 200, 25, BLACK, WHITE)
-        drawText("HP", smallFont, 50, 60, BLACK, WHITE)
-        drawText("MP", smallFont, 150, 60, BLACK, WHITE)
-        drawText("Mellee", smallFont, 250, 60, BLACK, WHITE)
-        drawText("Magic", smallFont, 350, 60, BLACK, WHITE)
-        drawText(strhp, smallFont, 50, 85, BLACK, WHITE)
-        drawText(strmp, smallFont, 150, 85, BLACK, WHITE)
-        drawText(str(inport.getStat(char, "MEL")), smallFont, 250, 85, BLACK, WHITE)
-        drawText(str(inport.getStat(char, "MGK")), smallFont, 350, 85, BLACK, WHITE)
-        drawText("weapon", smallFont, 199, 137, BLACK, WHITE)
-        drawText("hat", smallFont, 332, 137, BLACK, WHITE)
-
-        #print green indicator
-        if mode == "equip":
-            selectBoxMenu.centerx = 133*selection['x'] + 199
-            selectBoxMenu.centery = 75*selection['y'] + 212
-        elif mode == "inventory":
-            selectBoxMenu.centerx = 100*selectItem['x'] + 50
-            selectBoxMenu.centery = 50*selectItem['y'] + 425
-        pygame.draw.rect(mainSurface, (0,255,0), selectBoxMenu)
-        
-        #print equipment
-        i = 0
-        for unit in ['fighter', 'wmage', 'bmage']:
-            j = i*75 + 212
-            if i == selection['y']:
-                row = True
+#Update the main screens.
+def updateOverWorld():
+    #Updates the overworld viewer.
+    mainSurface.fill(BLACK)
+    for x in range(8):
+        for y in range(8):
+            if main_map.getDistance("hero", (x, y), "pinf") <= 1:
+                color = GREEN
             else:
-                row = False
-            drawText(unit, smallFont, 66, j, BLACK, WHITE)
-            weapon = inport.getListGroup(unit, "equip", 'weapon')
-            hat = inport.getListGroup(unit, "equip", "hat")
-            if weapon:
-                if row and selection['x'] == 0:
-                    colour = GREEN
-                else:
-                    colour = WHITE
-                drawText(weapon, smallFont, 199, j, BLACK, colour)
-            if hat:
-                if row and selection['x'] == 1:
-                    colour = GREEN
-                else:
-                    colour = WHITE
-                drawText(hat, smallFont, 332, j, BLACK, colour)
-            i +=1
-        
-        #draw inventory
-        inventory = inport.getStat("party", "inventory")
-        for index in range(len(inventory)):
-            if index < 4:
-                y = 425
-            else:
-                y = 475
-            if selectItem['x'] + 4*selectItem['y'] == index and mode == "inventory":
-                colour = GREEN
-            else:
-                colour = WHITE
-            drawText(inventory[index], smallFont, (index % 4)*100+50, y, BLACK, colour)
-            
-        #increment time
-        pygame.display.update()
-        mainClock.tick(60)
-
-def subBattle(battle_map):
-    
-    monster1 = battle_map.getMap((1,0))
-    monster2 = battle_map.getMap((1,1))
-    monster3 = battle_map.getMap((1,2))
-    
-    #initialize selection boxes
-    selectBoxMenu = pygame.Rect( 125, 0, 150, 20 )
-    selectBoxTarget = pygame.Rect(0, 0, 20, 20)
-    fun = battle_map.getStat
-    
-    #initialize state variables
-    mode = "wait"
-    menu = {'x': 0, 'y': 0, "xmax": 1, "ymax": 2}
-    target = {'x': 0, 'y': 0, "xmax": 1, "ymax": 2}
-    doOnce = False
-    activeUnits = []
-    unitIndex = 0
-    
-    fun = battle_map.getStat
-    color = {
-        'fighter': [int(fun('fighter', "r")), int(fun('fighter',"g")), int(fun('fighter',"b"))],
-        "wmage": [int(fun('wmage', "r")), int(fun('wmage',"g")), int(fun('wmage',"b"))],
-        'bmage': [int(fun('bmage', "r")), int(fun('bmage',"g")), int(fun('bmage',"b"))],
-        monster1: [int(fun(monster1, "r")), int(fun(monster1,"g")), int(fun(monster1,"b"))],
-        monster2: [int(fun(monster2, "r")), int(fun(monster2,"g")), int(fun(monster2,"b"))],
-        monster3: [int(fun(monster3, "r")), int(fun(monster3,"g")), int(fun(monster3,"b"))],
-    }
-    
-    for mob in [monster1, monster2, monster3]:
-        if mob == 'empty':
-            color[mob] = GREY
-   
-   #game loop
-    while True:
-        #checks for active units.
-        if unitIndex >= len(activeUnits):
-            
-            activeUnits = []
-            for unit in battle_map.getGroup("party", False) + battle_map.getGroup("monster", False):
-                if battle_map.getStat(unit, "ACT") >= 2:
-                    activeUnits.append(unit)
-            
-            if len(activeUnits) > 0:
-                mode = "active"
-            else:
-                mode = "wait"
-            unitIndex = 0
-        
-        if mode == "active":
-            #if unit is a monster
-            if activeUnits[unitIndex] in [monster1, monster2, monster3]:
-                #select move to cast
-                caster = activeUnits[unitIndex]
-                moveList = battle_map.getStat(caster, 'movelist')
-                moveList_possible = []
-                for entry in moveList:
-                    test = battle_map.createTarget(caster, 'empty', entry)
-                    if battle_map.testRequire(test):
-                        moveList_possible.append(entry)
-                if len(moveList_possible) == 0:
-                    print(activeUnits[unitIndex], "can't attack")
-                else:
-                    mindex = random.randint(0, len(moveList_possible)-1)
-                    move = moveList_possible[mindex]
-                    targets = []
-                    if move in ['heal', 'barrier']:
-                        targets = [monster1, monster2, monster3]
-                    else:
-                        targets = ['fighter', 'wmage', 'bmage']
-                    targets_possible = []
-                    for unit in targets:
-                        user_status = battle_map.getStat(unit, "status")
-                        if "KO" not in user_status:
-                            if'SACRIFICE' not in user_status:
-                                targets_possible.append(unit)
-                
-                    etarget = targets[random.randint(0, len(targets)-1)]
-                    if 'DEFEND' in battle_map.getStat('fighter', 'status'):
-                        if 'fighter' in targets_possible:
-                            etarget = 'fighter'
-                        
-                    battle_map.controlMove(caster, etarget, move)
-                    battle_map.controlTime(0)
-                           
-                unitIndex +=1
-            #else unit is a player
-            else:
-                mode = "player-menu"
-        
-        #check for keyboard input
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                pygame.quit()
-                sys.exit()
-            
-            #key inputs for menu
-            if event.type == KEYDOWN:
-                if mode == "player-menu" and doOnce == False:
-                    arrow_update(event, menu, sound_fx['menu'])
-                    
-                    #skip player
-                    if event.key == K_ESCAPE:
-                        caster = activeUnits[unitIndex]
-                        ltarget = "empty"
-                        battle_map.controlMove( caster, ltarget, 'pass' )
-                        battle_map.controlTime(0)
-                        #reset
-                        mode = "active"
-                        target['x'] = 0
-                        target['y'] = 0
-                        menu['y'] = 0
-                        unitIndex +=1
-                        doOnce = True
-
-                    #make selection
-                    elif event.key == K_RETURN:
-                        try:
-                            sound_fx['select'].play()
-                            move = battle_map.getStat(activeUnits[unitIndex], 'movelist')[menu['y'] +3*menu['x']]
-                            if battle_map.getStat(move, 'skip'):
-                                caster = activeUnits[unitIndex]
-                                battle_map.controlMove( caster, 'empty', move )
-                                battle_map.controlTime(0)
-                                mode = "active"
-                                move = False
-                                target['x'] = 0
-                                target['y'] = 0
-                                menu['y'] = 0
-                                menu['x'] = 0
-                                unitIndex +=1
-                            else:
-                                mode = "player-target"
-                            doOnce = True
-                                
-                        except IndexError:
-                            pass
-                                           
-                if mode == "player-target" and doOnce == False:
-                    arrow_update(event, target, sound_fx['menu'])
-                    
-                    if event.key == K_ESCAPE:
-                        sound_fx['back'].play()
-                        mode = "player-menu"
-                    
-                    #activate move
-                    if event.key == K_RETURN:
-                        #cast
-                        caster = activeUnits[unitIndex]
-                        ltarget = (target['x'], target['y'])
-                        battle_map.controlMove( caster, ltarget, move )
-                        battle_map.controlTime(0)
-                        #reset
-                        mode = "active"
-                        move = False
-                        target['x'] = 0
-                        target['y'] = 0
-                        menu['y'] = 0
-                        menu['x'] = 0
-                        unitIndex +=1
-                        doOnce = True
-
-        #draw menu
-        mainSurface.fill((255, 255, 255))
-        pygame.draw.rect(mainSurface, GREY, pygame.Rect((0, 100), (400, 300)))
-        
-        if mode == "player-target":
-            drawText(battle_map.getStat(move, "DESC"), smallFont, 200, 60, (0,0,0), (255,255,255))
-        
-        #This section needs a cleanup
-        if mode == "player-menu":
-            drawText(battle_map.getStat(activeUnits[unitIndex], "DESC"), smallFont, 200, 20, (0,0,0), (255,255,255))
-            
-            spacing = 40
-            _i = 0
-            x = 125
-            for attack in battle_map.getStat(activeUnits[unitIndex], 'movelist'):
-                if _i >= 3:
-                    _i = 0
-                    spacing = 40
-                    x +=175
-                
-                colour = WHITE
-                if menu['y'] == _i:
-                    if menu['x']*175 + 125 == x:
-                        selectBoxMenu.centery = spacing
-                        selectBoxMenu.centerx = x
-                        pygame.draw.rect(mainSurface, GREEN, selectBoxMenu)
-                        colour = GREEN
-                drawText(battle_map.getStat(attack, "DESC") , smallFont, x, spacing, BLACK, colour)
-                spacing +=20
-                _i +=1
-        
-        
-        #draw target selection box
-        if mode == "player-target":
-            selectBoxTarget.centerx = 290*target['x'] + 55
-            selectBoxTarget.centery = 100*target['y'] + 155
-            pygame.draw.rect(mainSurface, (0,255,0), selectBoxTarget)
-        
-        #update colour
-        for unit in color.keys():
+                color = WHITE
+            pygame.draw.rect(mainSurface, color, pygame.Rect((50*x, 50*y), (49, 49)))
+            unit = main_map.getMap((x, y))
             if unit != 'empty':
-                color[unit] = [int(fun(unit, "r")), int(fun(unit,"g")), int(fun(unit,"b"))]
+                sprite_symbol = main_map.getStat(unit, 'sprite')
+                mainSurface.blit(basicFont.render(sprite_symbol, True, BLACK, color), (x*50+10, y*50+10))
+
+    drawText("Level " + str(battle.getStat("recruiter", "LVL")), basicFont, 200,450, GREEN, BLACK)
+    main_map.controlLog("Overworld Updated")
+    pygame.display.update()
+    
+def updateRPG(char=False, moveHigh=False, unitHigh=False):
+    #draw menu
+    mainSurface.fill(WHITE)
+    pygame.draw.rect(mainSurface, GREY, middleRect)
+    pygame.draw.rect(mainSurface, BLACK, bottomRect)
+    #Name and movelist of active unit
+    if char:
+        drawText(battle.getStat(char, "DESC"), basicFont, 200, 20, BLACK, WHITE)
+        movelist = battle.getStat(char, "movelist")
+        ListBox(movelist, (3, 2), topRect, high=moveHigh)
+    
+    #Draw battlefield
+    for x in range(3):
+        for y in range(3):
+            unit = battle.getMap((x, y))
+            if unit != "empty" and "ko" not in battle.getStat(unit, "status"):
+                size = 50 if unit == "boss" else 10
+                fun = battle.getStat
+                color = [int(fun(unit, "r")), int(fun(unit,"g")), int(fun(unit,"b"))]
+                if (x,y) == unitHigh:
+                    pygame.draw.rect(mainSurface, GREEN, pygame.Rect(90 + x*200, 140 + y*100, size + 20, size + 20))
+                pygame.draw.rect(mainSurface, color, pygame.Rect(100 + x*200, 150 + y*100, size, size))
+
+    #Stats
+    def lstats():
+        for label in (False, "HP", "MP"):
+            yield label
+        units = ("fighter", "bmage", "wmage")
+        for unit in units:
+            yield unit
+            yield str(battle.getStat(unit, "HP"))
+            yield str(battle.getStat(unit, "MP"))
+            
+    ListBox(lstats(), (3,4), bottomRect, background=BLACK, font_color=GREEN)
+    pygame.display.update()
+
+#Other custom callables.
+def message(*args, font=basicFont, color=BLACK):
+    #Displays a message in the overworld.
+    pygame.draw.rect(mainSurface, BLACK, bottomRect)
+    text = " ".join(args)
+    color_text = GREEN
+    drawText(text, font, 200,450, color_text, color)
+    pygame.display.update()
+    while True:
+        event = pygame.event.wait()
+        if event.type == KEYDOWN or event.type == MOUSEBUTTONDOWN:
+            break
+
+def battleFinish():
+    battle.controlInit("finish")
+
+def playSound(sound, times):
+    sound_fx[sound].play(times)
+    main_map.controlLog("played sound effect", sound)
+
+def eventQuit():
+    pygame.quit()
+    sys.exit()
+
+def getItem():
+    battle.controlMove('party', 'treasure', 'get_item')
+    for log in battle.getLog():
+        if "added to party inventory" in log:
+            return re.split("\W+", log)[0]
+
+def subBattle(monster="monster"):
+    sound_overworld.fadeout(1000)
+    if monster == "boss":
+        fight_music = sound_boss
+        battle.controlInit("recruitBoss")
+    else:
+        fight_music = sound_fight
+        battle.controlInit("init")
+    updateRPG()
+    message("Battle Start")
+    fight_music.play(-1)
+    while len(battle.getGroup("monster")) > 0:
+        battle.controlTime(1)
+    fight_music.fadeout(1000)
+    message("You WIN!!")
+    sound_overworld.play(-1)
         
-        if "KO" not in battle_map.getStat("fighter", "status"):
-            pygame.draw.rect(mainSurface, color['fighter'], pygame.Rect((50, 250), (10, 10)))
-        wmage_status = battle_map.getStat("wmage", "status")
-        if "KO" not in wmage_status and 'SACRIFICE' not in wmage_status:
-            pygame.draw.rect(mainSurface, color['wmage'], pygame.Rect(( 50, 350 ), ( 10, 10 )))
-        if "KO" not in battle_map.getStat("bmage", "status"):
-            pygame.draw.rect(mainSurface, color['bmage'], pygame.Rect(( 50, 150 ), ( 10, 10 )))
-        
-        if "KO" not in battle_map.getStat(monster1, "status"):
-            pygame.draw.rect(mainSurface, color[monster1], pygame.Rect(( 340, 150 ), ( 10, 10 )))
-        if "KO" not in battle_map.getStat(monster2, "status"):
-            if monster2 =='boss':
-                x = 50
-            else:
-                x = 10
-            pygame.draw.rect(mainSurface, color[monster2], pygame.Rect(( 345 - x/2, 250 ), ( x, x )))
-        if "KO" not in battle_map.getStat(monster3, "status"):
-            pygame.draw.rect(mainSurface, color[monster3], pygame.Rect(( 340, 350 ), ( 10, 10 )))
-        
-        #draw bmage stats
-        drawText("Black Mage", smallFont, 50, 425, BLACK, WHITE)
-        drawText(str(battle_map.getStat("bmage", "HP")), smallFont, 50, 445, RED, WHITE)
-        drawText(str(battle_map.getStat("bmage", "MP")), smallFont, 50, 465, BLUE, WHITE)
-        
-        #draw fighter stats
-        drawText("Fighter", smallFont, 200, 425, BLACK, WHITE)
-        drawText(str(battle_map.getStat("fighter", "HP")), smallFont, 200, 445, RED, WHITE)
-        drawText(str(battle_map.getStat("fighter", "MP")), smallFont, 200, 465, BLUE, WHITE)
-        
-        #draw wmage stats
-        drawText("White Mage", smallFont, 350, 425, BLACK, WHITE)
-        drawText(str(battle_map.getStat("wmage", "HP")), smallFont, 350, 445, RED, WHITE)
-        drawText(str(battle_map.getStat("wmage", "MP")), smallFont, 350, 465, BLUE, WHITE)
-        
-        #draw messages
-        for entry in battle_map.getLog():
-            for skip in ["failed", "empty", "delay", "KO", "uses POISON", "OVERHEAL", "DEFEND_ACTIVE"]:
-                if skip in entry:
-                    break
-            else:
-                for add in ["uses", "HP", "added"]:
-                    if add in entry:
-                        pygame.draw.rect(mainSurface, WHITE, pygame.Rect((0,0), (400,100)))
-                        drawText(entry, smallFont, 200,50, [0,0,0], [255,255,255])
-                        pygame.display.update()
-                        while True:
-                            event = pygame.event.wait()
-                            if event.type == KEYDOWN and event.key == K_RETURN:
-                                pygame.draw.rect(mainSurface, WHITE, pygame.Rect((0,0), (400,100)))
-                                break
-                   
-        #draw win
-        if "KO" in battle_map.getStat(monster1, "status") or monster1 == "empty":
-            if "KO" in battle_map.getStat(monster2, "status") or monster2 == "empty":
-                if "KO" in battle_map.getStat(monster3, "status") or monster3 == "empty":
-                    drawText("VICTORY!!!", basicFont, 200,250, [0,255,0], [125,125,125])
-                    pygame.display.update()
-                    while True:
-                        event = pygame.event.wait()
-                        if event.type == KEYDOWN and event.key == K_RETURN:
-                            return battle_map
-        #draw lose
-        #draw win
-        if "KO" in battle_map.getStat('fighter', "status"):
-            if "KO" in battle_map.getStat('wmage', "status"):
-                if "KO" in battle_map.getStat('bmage', "status"):
-                    drawText("DEFEAT", basicFont, 200,250, [0,255,0], [125,125,125])
-                    pygame.display.update()
-                    while True:
-                        event = pygame.event.wait()
-                        if event.type == KEYDOWN and event.key == K_RETURN:
-                            pygame.quit()
-                            sys.exit()
+def setChar(new):
+    char = new
+    updateRPG(new)
+    move = False
+    target = "empty"
+    while True:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                eventQuit()
+            
+            elif event.type == MOUSEBUTTONDOWN:
+                mouse = pygame.mouse.get_pos()
+                if topRect.collidepoint(mouse):
+                    movelist = battle.getStat(char, "movelist")
+                    test = ListBox(movelist, (3,2), topRect, True, mouse)
+                    if test != "empty" and test:
+                        move = False if move == test else test
+                        
+                elif middleRect.collidepoint(mouse):
+                    x = 1 if mouse[0] > 200 else 0
+                    if mouse[1] < 200:
+                        y = 0
+                    elif mouse[1] < 300:
+                        y = 1
+                    else:
+                        y = 2
                     
-        #increment time
-        doOnce = False
-        pygame.display.update()
-        if mode == "wait":
-            battle_map.controlTime()
+                    target = "empty" if target == (x,y) else (x,y)
+                            
+                updateRPG(char, moveHigh=move, unitHigh=target)
+            
+            if move and (battle.getStat(move, "skip") or target != "empty"):
+                battle.castMove(char, target, move)
+                updateRPG()
+                return
+                
+        mainClock.tick(60)
+
+local = {
+    "message": {
+        "f": "message",
+        "all": True,
+#        "kwargs": {"color": "-$1"},
+#        "default": {"-$1": "WHITE"},
+    },
+    "soundFX": {
+        "f": "playSound",
+        "args": ["$1", "$2"],
+        "default": {"$2": 0},
+    },
+    "update": {
+        "f": "updateOverWorld",
+    },
+    "updateRPG": {
+        "f": "updateRPG",
+        "args": ["$1"],
+    },
+    "battle_finish": {
+        "f": "battleFinish",
+    },
+    "exit": {
+        "f": "eventQuit",
+    },
+    "getitem": {
+        "f": "getItem",
+    },
+    "battle": {
+        "f": "subBattle",
+        "args": ["$1"],
+    },
+    "activate": {
+        "f": "setChar",
+        "args": ["$1"],
+    }
+}
+glob = {
+    "message": message, 
+    "playSound": playSound, 
+    "updateOverWorld": updateOverWorld,
+    "eventQuit": eventQuit,
+    "getItem": getItem,
+    "subBattle": subBattle,
+    "updateRPG": updateRPG,
+    "setChar": setChar,
+    "battleFinish": battleFinish,
+}
+interpret.importModule(local, glob)
+main_map = loadxml.battleStart("xml/zanar2.xml")
+battle = loadxml.battleStart("xml/rpg.xml")
+
+main_map.controlInit("init")
+def main():
+    #game loop
+    while True:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                eventQuit()
+            
+            elif event.type == MOUSEBUTTONDOWN:
+                mouse = pygame.mouse.get_pos()
+                for x in range(8):
+                    for y in range(8):
+                        if pygame.Rect(49*x, 49*y, 49, 49).collidepoint(mouse):
+                            main_map.castMove("hero", (x, y), "hero_travel")
+                            main_map.controlTime(1)
+                        
+            elif event.type == KEYDOWN and event.key == K_q:
+                sound_fx['select'].play()
+                menuScreen()
+                updateOverWorld()
+        
         mainClock.tick(60)
         
+#Code for equip menu, most of this is done outside Udebs.
+def menuScreen():
+    #Define order equipment is displayed
+    def lEquip(all=True):
+        for item in [False, "Weapon", "Hat"]:
+            yield item if all else False
+        for unit in ['fighter', 'bmage', 'wmage']:
+            yield unit
+            yield battle.getListGroup(unit, "equip", 'weapon') if all else unit
+            yield battle.getListGroup(unit, "equip", 'hat') if all else unit
+                
+    #Define order stats are displayed
+    def lStats():
+        stats = ("HP", "MP", "MEL", "MGK")
+        for stat in stats:
+            yield stat
+        for stat in stats:
+            value = str(battle.getStat(char, stat))
+            if stat in ("HP", "MP"):
+                value += "/" + str(battle.getStat(char, "MAX" + stat))
+            yield value
+    
+    char = "fighter"
+    
+    def updateMenu():
+        mainSurface.fill(WHITE)
+
+        #Section bars
+        for i in (100, 400):
+            pygame.draw.line(mainSurface, BLACK, (0, i), (400, i))
+        for i in (175, 250, 325):
+            pygame.draw.line(mainSurface, BLACK, (20,i), (380,i))
+        for i in (133, 266):
+            pygame.draw.line(mainSurface, BLACK, (i, 120), (i, 380))
+        
+        #Header
+        drawText(battle.getStat(char, "DESC"), basicFont, 200, 25, BLACK, WHITE)
+        
+        #Stats
+        ListBox(lStats(), (4, 2), topRect)
+        #equipment
+        ListBox(lEquip(), (3, 4), middleRect, high=char)
+        #inventory
+        inventory = battle.getStat("party", "inventory")
+        ListBox(inventory, (4, 3), bottomRect)
+        
+        pygame.display.update()    
+    
+    updateMenu()
+    while True:
+        for event in pygame.event.get():
+            if event.type == QUIT:
+                eventQuit()
+            
+            elif event.type == KEYDOWN:
+                return
+            
+            elif event.type == MOUSEBUTTONDOWN:
+                mouse = pygame.mouse.get_pos()
+                if middleRect.collidepoint(mouse):
+                    test = ListBox(lEquip(all=False), (3,4), middleRect, True, mouse)
+                    if test:
+                        char = test
+                    
+                elif bottomRect.collidepoint(mouse):
+                    inventory = battle.getStat("party", "inventory")
+                    item = ListBox(inventory, (4,3), bottomRect, True, mouse)
+                    if item == "empty":
+                        battle.controlMove(char, battle.getStat(char, "equip"), "unequip")
+                    else:
+                        battle.castMove("empty", char, item)
+                            
+                updateMenu()
+        
+        mainClock.tick(60)
+
 if __name__ == "__main__":
     main()
