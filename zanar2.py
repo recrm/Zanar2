@@ -4,8 +4,7 @@ import re
 import random
 import pygame 
 from pygame.locals import *
-from udebs import loadxml
-from udebs import interpret
+import udebs
 
 """
 To do.
@@ -28,11 +27,11 @@ basicFont = pygame.font.SysFont(None, 48)
 smallFont = pygame.font.SysFont(None, 24)
 
 #music
-sound_overworld = pygame.mixer.Sound('sound/overworld.ogg')
+sound_overworld = pygame.mixer.Sound('static/overworld.ogg')
 sound_overworld.set_volume(0.75)
-sound_fight = pygame.mixer.Sound('sound/fight.ogg')
+sound_fight = pygame.mixer.Sound('static/fight.ogg')
 sound_fight.set_volume(0.75)
-sound_boss = pygame.mixer.Sound('sound/boss.ogg')
+sound_boss = pygame.mixer.Sound('static/boss.ogg')
 sound_boss.set_volume(1)
 sound_overworld.play(-1)
 
@@ -277,9 +276,9 @@ glob = {
     "setChar": setChar,
     "battleFinish": battleFinish,
 }
-interpret.importModule(local, glob)
-main_map = loadxml.battleStart("xml/zanar2.xml")
-battle = loadxml.battleStart("xml/rpg.xml")
+udebs.importModule(local, glob)
+main_map = udebs.battleStart("xml/zanar2.xml")
+battle = udebs.battleStart("xml/rpg.xml")
 
 main_map.controlInit("init")
 def main():

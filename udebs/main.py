@@ -30,7 +30,6 @@ class instance:
         self.lists = {'group', 'effect', 'require'}
         self.stats = {'increment'}
         self.strings = set()
-        self.slist = {}
         self.rlist = set()
         self.rmap = set()
         
@@ -61,7 +60,6 @@ class instance:
             self.lists == other.lists,
             self.stats == other.stats,
             self.strings == other.strings,
-            self.slist == other.slist,
             self.rlist == other.rlist,
             self.rmap == other.rmap,
             
@@ -574,7 +572,6 @@ class instance:
         return new_unit
     
     def controlTravel(self, caster, targets=False):
-        
         caster = self.getTarget(caster)
         targets = self.getTarget(targets, multi=True)
         
@@ -742,12 +739,15 @@ class instance:
         move = self.getTarget(move)
         pointer = {}
         
+        if start == finish:
+            return []
+        
         for i in self.pathAdjacent(start, move, pointer):
             if finish.loc in i:
                 break
         else:
             return []
-
+            
         found = [finish.loc]
         while True:
             new = pointer[found[-1]]

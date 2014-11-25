@@ -134,7 +134,7 @@
             <i>NAME.$move in STAT.$caster.movelist</i>
         </require>
         <effect>
-            <i>CHANGE $caster MP -STAT.$move.MP</i>
+            <i>CHANGE $caster MP -(STAT.$move.MP)</i>
             <i>CHANGE $caster ACT -2</i>
         </effect>
     </active>
@@ -159,7 +159,7 @@
         <DESC>Characters HP has dropped to 0</DESC>
         <require>STAT.$target.HP &lt;= 0</require>
         <effect>
-            <i>CHANGE $target HP -STAT.$target.HP</i>
+            <i>CHANGE $target HP -(STAT.$target.HP)</i>
             <i>LOSES $target group monster</i>
             <i>DELAY (CAST $T party_KO) 0</i>
         </effect>
@@ -414,8 +414,8 @@
         <effect>
             <i>soundFX uberheal</i>
             <i>CAST ALL.party full_heal</i>
-            <i>CHANGE $caster HP -STAT.$caster.HP</i>
-            <i>CHANGE $caster MP -STAT.$caster.MP</i>
+            <i>CHANGE $caster HP -(STAT.$caster.HP)</i>
+            <i>CHANGE $caster MP -(STAT.$caster.MP)</i>
             <i>GETS $caster status ko</i>
         </effect>
         <group>
@@ -444,7 +444,7 @@
         <DESC>Doomsday Active Component</DESC>
         <effect>
             <i>soundFX boom</i>
-            <i>CHANGE $target HP -STAT.$target.HP</i>
+            <i>CHANGE $target HP -(STAT.$target.HP)</i>
         </effect>
         <group>
             <i>damage</i>
