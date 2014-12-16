@@ -44,7 +44,7 @@
 
     <init>
         <effect>
-            <i>CHANGE recruiter ACT -4</i>
+            <i>CHANGE recruiter ACT 4</i>
             <i>treasure TRAVEL ((DICE.5 + 2)  (DICE.5 + 2))</i>
             <i>GETS treasure group onboard</i>
             <i>hero TRAVEL (0 0)</i>
